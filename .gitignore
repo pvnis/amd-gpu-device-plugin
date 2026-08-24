@@ -1,0 +1,4 @@
+# Built artifacts. The binary used to be committed here and its source was not,
+# which is how the source came to be lost; keep it the other way round.
+amd-gpu-device-plugin
+amd-gpu-device-plugin-new
