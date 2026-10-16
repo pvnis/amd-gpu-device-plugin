@@ -57,6 +57,8 @@ type gpuTopology struct {
 	gfxVersion int
 	cuGroup    int
 	name       string
+	// renderMinor is the minor of the GPU's DRM render node, /dev/dri/renderD<n>.
+	renderMinor int
 }
 
 // readTopology reads the GPUs out of the KFD topology.
@@ -96,7 +98,8 @@ func readTopology(root string) ([]gpuTopology, error) {
 			// RDNA pairs compute units into workgroup processors and KFD
 			// refuses a queue mask that splits a pair; GCN and CDNA do not
 			// pair. Everything from gfx10 on is RDNA.
-			cuGroup: 1,
+			cuGroup:     1,
+			renderMinor: int(p["drm_render_minor"]),
 		}
 		if g.gfxVersion/10000 >= 10 {
 			g.cuGroup = 2

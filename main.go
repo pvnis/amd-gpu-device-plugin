@@ -33,7 +33,7 @@ const (
 
 var (
 	kfdDevice    = flag.String("kfd", "/dev/kfd", "Path to /dev/kfd")
-	renderDevice = flag.String("render", "/dev/dri/renderD128", "Path to DRM render node")
+	renderDevice = flag.String("render", "", "Path to DRM render node; empty reads the GPU's from the KFD topology")
 	totalVRAMMiB = flag.Int("vram-mib", 0, "Total GPU VRAM in MiB to advertise; 0 reads it from the KFD topology")
 	sliceMiB     = flag.Int("slice-mib", 512, "Granularity of each resource unit in MiB")
 	kfdSysfs     = flag.String("kfd-sysfs", "/sys/class/kfd/kfd/topology", "KFD topology root")
@@ -169,7 +169,17 @@ func main() {
 		if *totalVRAMMiB == 0 {
 			*totalVRAMMiB = gpus[0].vramMiB
 		}
+		// The render node's minor follows DRM probe order, so it is not
+		// always renderD128: on a VM with a virtual display, that one is the
+		// display's and the GPU's comes after it.
+		if *renderDevice == "" && gpus[0].renderMinor > 0 {
+			*renderDevice = fmt.Sprintf("/dev/dri/renderD%d", gpus[0].renderMinor)
+		}
 	}
+	if *renderDevice == "" {
+		*renderDevice = "/dev/dri/renderD128"
+	}
+	log.Printf("allocating %s and %s", *kfdDevice, *renderDevice)
 	if *totalVRAMMiB == 0 {
 		log.Fatalf("no VRAM size: the topology gave none and --vram-mib was not set")
 	}
