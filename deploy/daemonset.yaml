@@ -1,0 +1,94 @@
+# The AMD device plugin, on every node labelled gpu.vendor=amd.
+# Advertises VRAM to the kubelet as amd.com/gpu-vram-mib (512-MiB units), hands
+# each allocated container /dev/kfd and the GPU's render node (from the KFD
+# topology) with HSA_USERPTR_FOR_PAGED_MEM=0, and publishes the node's hardware
+# as hami.io/node-amd-register (its only use of the API).
+# Not enforcement: gVisor's Sentry enforces limits from dev.gvisor.flag.* annotations.
+# After a kubelet/k3s restart the plugin does not re-register (node shows
+# amd.com/gpu-vram-mib: 0); delete the pod to re-register.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: amd-gpu-device-plugin
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: amd-gpu-device-plugin
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: amd-gpu-device-plugin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: amd-gpu-device-plugin
+subjects:
+  - kind: ServiceAccount
+    name: amd-gpu-device-plugin
+    namespace: kube-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: amd-gpu-device-plugin
+  namespace: kube-system
+  labels:
+    app: amd-gpu-device-plugin
+spec:
+  selector:
+    matchLabels:
+      app: amd-gpu-device-plugin
+  template:
+    metadata:
+      labels:
+        app: amd-gpu-device-plugin
+    spec:
+      serviceAccountName: amd-gpu-device-plugin
+      priorityClassName: system-node-critical
+      nodeSelector:
+        gpu.vendor: amd
+      tolerations:
+        - key: gpu.vendor
+          operator: Equal
+          value: amd
+          effect: NoSchedule
+      containers:
+        - name: plugin
+          image: registry.midori/amd-gpu-device-plugin:7bb3292
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            # KFD's topology files for a GPU are readable only by a process
+            # whose device cgroup allows that GPU's render node, and a
+            # container's allows no devices. Without this the plugin finds no
+            # GPU and exits.
+            privileged: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          volumeMounts:
+            - name: device-plugins
+              mountPath: /var/lib/kubelet/device-plugins
+            - name: sys
+              mountPath: /sys
+              readOnly: true
+      volumes:
+        - name: device-plugins
+          hostPath:
+            path: /var/lib/kubelet/device-plugins
+        - name: sys
+          hostPath:
+            path: /sys
